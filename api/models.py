@@ -164,6 +164,37 @@ class ClaudeModel(BaseIncidentModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# OpenAI GPT backend
+# ─────────────────────────────────────────────────────────────────────────────
+
+class OpenAIModel(BaseIncidentModel):
+    def __init__(self):
+        from openai import OpenAI
+        self.client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        self.model_id = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        logger.info(f"Using OpenAI API: {self.model_id}")
+
+    async def analyze(self, logs: str, metrics: str, error_trace: str, service: str) -> dict[str, Any]:
+        import asyncio
+        incident_text = self.preprocess(logs, metrics, error_trace, service)
+
+        def _call():
+            response = self.client.chat.completions.create(
+                model=self.model_id,
+                max_tokens=1024,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Analyze this production incident:\n\n{incident_text}"},
+                ],
+                response_format={"type": "json_object"},
+            )
+            return response.choices[0].message.content
+
+        text = await asyncio.get_event_loop().run_in_executor(None, _call)
+        return self.parse_json_output(text)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Orchestrator
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -178,8 +209,10 @@ class IncidentAnalyzer:
             self._model = FineTunedModel(MODEL_CHECKPOINT)
         elif MODEL_TYPE.lower() == "claude":
             self._model = ClaudeModel()
+        elif MODEL_TYPE.lower() == "openai":
+            self._model = OpenAIModel()
         else:
-            raise ValueError(f"Unknown MODEL_TYPE: {MODEL_TYPE}")
+            raise ValueError(f"Unknown MODEL_TYPE: {MODEL_TYPE}. Use 'claude', 'openai', or 'fine_tuned'")
         return self._model
 
     async def analyze(self, logs: str, metrics: str, error_trace: str, service: str, db) -> dict[str, Any]:

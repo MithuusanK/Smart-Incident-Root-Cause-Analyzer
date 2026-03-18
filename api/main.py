@@ -9,6 +9,9 @@ GET  /stats            — aggregate statistics
 POST /grafana/webhook  — Grafana alert webhook
 """
 
+from dotenv import load_dotenv
+load_dotenv()  # loads api/.env automatically
+
 import logging
 import os
 import uuid
