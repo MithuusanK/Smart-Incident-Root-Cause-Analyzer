@@ -15,6 +15,7 @@
       Incident Analyzer
     </div>
     <nav>
+      <a href="#" id="nav-home" onclick="goHome(event)">Home</a>
       <a href="#" id="nav-analyze" onclick="showPanel('analyze')">Analyze</a>
       <a href="#" id="nav-history" onclick="showPanel('history')">History</a>
       <a href="/docs" target="_blank">API Docs</a>
@@ -186,6 +187,38 @@ function showPanel(name) {
   } else {
     hp.classList.remove('visible');
   }
+}
+
+function resetResultView() {
+  currentRequestId = null;
+  document.getElementById('result-empty').style.display = 'block';
+  document.getElementById('result-content').style.display = 'none';
+  document.getElementById('res-root-cause').textContent = '';
+  document.getElementById('conf-bar').style.width = '0%';
+  document.getElementById('conf-value').textContent = '0%';
+  document.getElementById('res-category').textContent = '';
+  document.getElementById('res-severity').style.display = 'none';
+  document.getElementById('res-time').textContent = '';
+  document.getElementById('res-request-id').textContent = '';
+  document.getElementById('res-steps').innerHTML = '';
+  document.getElementById('res-similar').innerHTML = '';
+  document.getElementById('similar-section').style.display = 'none';
+}
+
+function resetAnalysisForm() {
+  document.getElementById('service').value = '';
+  document.getElementById('severity').value = '';
+  document.getElementById('logs').value = '';
+  document.getElementById('metrics').value = '';
+  document.getElementById('error-trace').value = '';
+}
+
+function goHome(event) {
+  if (event) event.preventDefault();
+  resetAnalysisForm();
+  resetResultView();
+  showPanel('analyze');
+  document.getElementById('logs').focus();
 }
 
 // ─── Sample data ────────────────────────────────────────────────────────────

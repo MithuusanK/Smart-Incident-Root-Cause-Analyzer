@@ -65,17 +65,13 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     logger.info("Initialising database indexes...")
-    try:
-        await init_db()
-        
-        seed_path = os.environ.get("SEED_DATA_PATH")
-        if seed_path and os.path.exists(seed_path):
-            count = await load_training_data(seed_path)
-            if count:
-                logger.info(f"Seeded {count} training incidents into MongoDB")
-        logger.info("Database initialized successfully.")
-    except Exception as e:
-        logger.warning(f"MongoDB not available ({e}). Running in demo mode without persistence.")
+    await init_db()
+
+    seed_path = os.environ.get("SEED_DATA_PATH")
+    if seed_path and os.path.exists(seed_path):
+        count = await load_training_data(seed_path)
+        if count:
+            logger.info(f"Seeded {count} training incidents into MongoDB")
 
     logger.info("API ready at http://localhost:8000")
 
@@ -180,6 +176,15 @@ async def notify_slack(result: dict, service: str, request_id: str):
 
 @app.get("/health", tags=["System"])
 async def health(db: AsyncIOMotorDatabase = Depends(get_db)):
+    if os.environ.get("USE_INMEMORY_DB", "0").lower() in ("1", "true", "yes"):
+        return {
+            "status": "ok",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": "in_memory",
+            "model_type": os.environ.get("MODEL_TYPE", "claude"),
+            "version": "1.0.0",
+        }
+
     try:
         await db.command("ping")
         db_status = "ok"

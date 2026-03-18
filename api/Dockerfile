@@ -25,18 +25,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ─── Python dependencies ────────────────────────────────────────────────────
 COPY requirements.txt .
 
-# Install lightweight deps first (no torch/transformers for claude-only mode)
+# Install API/runtime dependencies used in claude/openai mode.
 RUN pip install \
     fastapi \
     "uvicorn[standard]" \
     pydantic \
-    sqlalchemy \
-    psycopg2-binary \
+    motor \
     httpx \
     anthropic \
+    openai \
     python-dotenv \
-    boto3 \
-    redis
+    boto3
 
 # Install ML deps conditionally based on MODEL_TYPE arg
 ARG MODEL_TYPE=claude

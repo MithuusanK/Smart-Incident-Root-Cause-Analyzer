@@ -25,7 +25,7 @@ Incident fires → Agent analyzes logs → 2 minutes:
                     └────────────┬────────────┘
                                  │
                     ┌────────────▼────────────┐
-                    │  PostgreSQL             │
+                    │  MongoDB                │
                     │  (incident history +    │
                     │   similarity search)    │
                     └─────────────────────────┘
@@ -36,7 +36,7 @@ Incident fires → Agent analyzes logs → 2 minutes:
 - **Base Model:** Mistral-7B-v0.1 (HuggingFace)
 - **Fine-tuning:** QLoRA via PEFT + trl (4-bit, ~15GB VRAM)
 - **Inference API:** FastAPI on DigitalOcean App Platform
-- **Database:** PostgreSQL (incident history, audit trail)
+- **Database:** MongoDB (DigitalOcean Managed MongoDB or local Mongo)
 - **Demo mode:** Claude API (claude-haiku) when GPU model not deployed
 
 ---
@@ -56,7 +56,7 @@ cp api/.env.example api/.env
 
 ```bash
 cd data
-pip install -r ../train/requirements.txt
+python -m pip install -r ../train/requirements.txt
 python generate_synthetic_data.py --count 900
 # → data/training_incidents.jsonl      (765 examples)
 # → data/training_incidents_test.jsonl (135 examples)
@@ -222,7 +222,8 @@ Target: **>80% category accuracy**, **ROUGE-L >0.60**
 
 ```bash
 # Required
-DATABASE_URL=postgresql://...
+MONGO_URL=mongodb+srv://...
+MONGO_DB=incident_analyzer
 ANTHROPIC_API_KEY=sk-ant-...         # for demo/claude mode
 
 # For fine-tuned model
@@ -246,6 +247,10 @@ services:
     instance_count: 2
     http_port: 8000
     envs:
+      - key: MONGO_URL
+        value: ${incident-analyzer-db.DATABASE_URL}
+      - key: MONGO_DB
+        value: incident_analyzer
       - key: MODEL_TYPE
         value: claude
       - key: ANTHROPIC_API_KEY
@@ -307,7 +312,7 @@ Slash command: `/analyze-incident [paste logs here]`
 ```
 incident-root-cause-analyzer/
 ├── README.md
-├── docker-compose.yml          # Full stack: API + PostgreSQL + Dashboard
+├── docker-compose.yml          # Full stack: API + MongoDB + Dashboard
 ├── nginx.conf                  # Dashboard reverse proxy
 ├── data/
 │   ├── generate_synthetic_data.py   # Generates 900 training examples
@@ -319,7 +324,7 @@ incident-root-cause-analyzer/
 ├── api/
 │   ├── main.py                 # FastAPI app (all endpoints)
 │   ├── models.py               # Inference: fine-tuned model + Claude fallback
-│   ├── database.py             # SQLAlchemy models + PostgreSQL
+│   ├── database.py             # Motor/MongoDB data access layer
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── .env.example
@@ -343,7 +348,7 @@ incident-root-cause-analyzer/
 - [ ] Web UI: paste logs → get root cause + confidence + fix steps
 - [ ] Fine-tuned model achieves >80% category accuracy on test set
 - [ ] Grafana webhook sends alert → `/grafana/webhook` → Slack notification
-- [ ] All analyses logged to PostgreSQL with audit trail
+- [ ] All analyses logged to MongoDB with audit trail
 
 ---
 

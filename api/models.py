@@ -87,6 +87,54 @@ class BaseIncidentModel(ABC):
         }
 
 
+class HeuristicModel(BaseIncidentModel):
+    """Simple local analyzer used when cloud model credentials are missing."""
+
+    async def analyze(self, logs: str, metrics: str, error_trace: str, service: str) -> dict[str, Any]:
+        text = "\n".join([logs or "", metrics or "", error_trace or ""]).lower()
+
+        patterns = [
+            ("database_n_plus_one", ["n+1", "lazy-loading", "too many queries", "248 queries"],
+             "Likely N+1 query pattern causing excessive database round-trips."),
+            ("database_connection_pool", ["connection pool", "pool exhausted", "too many connections"],
+             "Database connection pool appears exhausted under load."),
+            ("service_timeout_cascade", ["timeout", "timed out", "gateway timeout", "p99"],
+             "Downstream latency/timeout is likely cascading through dependent services."),
+            ("kubernetes_oom", ["oom", "out of memory", "killed process"],
+             "Service appears to be exceeding memory limits and restarting."),
+            ("cpu_hot_loop", ["100% cpu", "high cpu", "hot loop", "regex backtracking"],
+             "CPU saturation suggests a hot loop or expensive computation path."),
+            ("certificate_expiry", ["certificate", "x509", "tls", "expired"],
+             "TLS certificate validation is failing, likely due to certificate expiry or trust issues."),
+            ("config_error", ["missing env", "invalid config", "configuration", "keyerror"],
+             "Runtime configuration appears invalid or incomplete."),
+        ]
+
+        category = "application_error"
+        root_cause = f"Unable to confidently classify incident for {service or 'unknown service'} from provided telemetry."
+        confidence = 62
+
+        for detected_category, keywords, message in patterns:
+            if any(keyword in text for keyword in keywords):
+                category = detected_category
+                root_cause = message
+                confidence = 78
+                break
+
+        fix_steps = [
+            "Correlate logs with recent deploys and infrastructure changes.",
+            "Add a focused metric/trace on the suspected bottleneck path.",
+            "Create an alert runbook entry with a validated mitigation step.",
+        ]
+
+        return {
+            "root_cause": root_cause,
+            "confidence": confidence,
+            "category": category,
+            "fix_steps": fix_steps,
+        }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Fine-tuned Mistral backend
 # ─────────────────────────────────────────────────────────────────────────────
@@ -169,7 +217,9 @@ class ClaudeModel(BaseIncidentModel):
 
 class OpenAIModel(BaseIncidentModel):
     def __init__(self):
-        from openai import OpenAI
+        import importlib
+
+        OpenAI = importlib.import_module("openai").OpenAI
         self.client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
         self.model_id = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
         logger.info(f"Using OpenAI API: {self.model_id}")
@@ -205,12 +255,27 @@ class IncidentAnalyzer:
     def _load_model(self) -> BaseIncidentModel:
         if self._model is not None:
             return self._model
+        local_mode = os.environ.get("USE_INMEMORY_DB", "0").lower() in ("1", "true", "yes")
+
+        if local_mode and MODEL_TYPE.lower() in ("claude", "openai"):
+            logger.info("USE_INMEMORY_DB enabled; using local HeuristicModel")
+            self._model = HeuristicModel()
+            return self._model
+
         if MODEL_TYPE.lower() == "fine_tuned":
             self._model = FineTunedModel(MODEL_CHECKPOINT)
         elif MODEL_TYPE.lower() == "claude":
-            self._model = ClaudeModel()
+            if os.environ.get("ANTHROPIC_API_KEY"):
+                self._model = ClaudeModel()
+            else:
+                logger.warning("ANTHROPIC_API_KEY not set; falling back to local HeuristicModel")
+                self._model = HeuristicModel()
         elif MODEL_TYPE.lower() == "openai":
-            self._model = OpenAIModel()
+            if os.environ.get("OPENAI_API_KEY"):
+                self._model = OpenAIModel()
+            else:
+                logger.warning("OPENAI_API_KEY not set; falling back to local HeuristicModel")
+                self._model = HeuristicModel()
         else:
             raise ValueError(f"Unknown MODEL_TYPE: {MODEL_TYPE}. Use 'claude', 'openai', or 'fine_tuned'")
         return self._model
@@ -231,13 +296,17 @@ class IncidentAnalyzer:
         category = result.get("category", "unknown")
         similar = await find_similar_incidents(db, category, service)
 
+        backend_name = model.__class__.__name__.replace("Model", "").lower()
+        if backend_name == "finetuned":
+            backend_name = "fine_tuned"
+
         return {
             "root_cause": result.get("root_cause", "Unable to determine root cause"),
             "confidence": confidence,
             "category": category,
             "fix_steps": result.get("fix_steps", []),
             "similar_incidents": similar,
-            "model_used": MODEL_TYPE,
+            "model_used": backend_name,
             "inference_time_ms": inference_ms,
         }
 
