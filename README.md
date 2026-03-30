@@ -1,3 +1,13 @@
+## My Contributions
+
+I was a primary contributor to this project and co-developed key backend and deployment functionality. My contributions included:
+
+- Backend development with FastAPI for incident analysis workflows and API handling
+- Alert/log intake pipeline work for Grafana and web-based inputs
+- Slack/webhook output integration for incident notifications
+- Docker Compose and nginx setup for local orchestration and deployment
+- MongoDB workflow contributions for storing incidents, audit data, and retrieval logic
+- Collaboration on system design, service flow, and production-style architecture for incident triage
 # Smart Incident Root Cause Analyzer
 
 **AI-powered production incident analysis.** Fine-tune a Mistral-7B model on historical incident data, then deploy it as a real-time API that identifies root causes in minutes — not hours.
